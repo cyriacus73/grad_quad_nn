@@ -1,0 +1,5 @@
+*.pdsprj
+Project Backups/
+*Autosaved*
+.vscode/
+Debug/

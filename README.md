@@ -1,254 +1,125 @@
-# Project Summary / README
-
-## What this project is
+# Grad proj codebase
 
 This project is a PIC16F877A firmware written in C using XC8.
-The codebase is split into multiple C files to keep responsibilities clean and to avoid linker conflicts.
+The codebase is split into multiple C and header files.
 
-The system has three main responsibilities:
+The system has four main responsibilities:
 
-1. System startup and control flow
-2. Neural network training logic
-3. Hardware interaction (LCD and keypad)
+    System startup and menu control flow
+    Neural network training logic (full dataset)
+    Interactive demo training (user-provided samples)
+    Hardware interaction (LCD and keypad)
 
-Each responsibility lives in exactly one place.
 
----
+main.c:
 
-## File roles and responsibilities
-
-### main.c
-
-main.c is the entry point of the program.
-
-Its job is minimal by design.
-
-Responsibilities:
-
-* Configure the microcontroller
-* Initialize peripherals
-* Decide what high-level mode the system runs in
-* Call into other modules
+Configure the microcontroller (I/O ports, pull-ups)
+Initialize LCD
+Display menu system
+Read keypad for mode selection
+Route to appropriate mode (Demo, Run, Train)
 
 main.c does NOT:
 
-* Contain LCD code
-* Contain keypad code
-* Contain training logic
-* Contain neural network math
+Contain LCD implementation
+Contain keypad implementation details
+Contain training logic
+Contain neural network math
 
 Typical structure:
 
-* main()
-* Infinite loop
-* Calls run_network()
+Configure hardware
+Display menu: "1:Demo 2:Run" / "3:Train"
+Wait for user input (1, 2, or 3)
+Call appropriate mode function
 
----
+Three modes:
 
-### run.c
+Demo Mode (press 1): Calls run_demo() from demo.c
+Run Mode (press 2): Calls run_network() from run.c
+Train Mode (press 3): Calls train_network() and display_trained_parameters_on_lcd() from train.c
 
-run.c is the hardware interaction and runtime control layer.
 
+lcd.c
+lcd.c is the shared LCD driver layer.
 This file owns:
 
-* LCD low-level functions
-* LCD high-level helper functions
-* Keypad input functions
-* The main runtime loop that interacts with hardware
+All LCD hardware control functions
+LCD initialization
+LCD character/string output
+LCD positioning
+LCD number formatting (signed, unsigned, fixed-point)
 
 Examples of what belongs here:
 
-* lcd_pulse
-* lcd_cmd
-* lcd_data
-* lcd_init
-* lcd_clear
-* lcd_str
-* key_get
-* run_network
+lcd_send_pulse()
+lcd_send_command()
+lcd_send_data()
+lcd_initialize()
+lcd_clear_screen()
+lcd_goto_position()
+lcd_print_string()
+lcd_print_signed_int()
+lcd_print_unsigned_int()
+lcd_print_fixed_point()
 
-run.c is the only file that defines these functions.
-
+lcd.c is the ONLY file that defines these functions.
 No other .c file is allowed to define or duplicate them.
 
----
-
-### run.h
-
-run.h is the public interface of run.c.
-
+lcd.h
+lcd.h is the public interface of lcd.c.
 It contains:
 
-* Function declarations for functions implemented in run.c
-* Nothing else
+Function declarations for all LCD functions implemented in lcd.c
+Nothing else
 
 It does NOT:
 
-* Define functions
-* Contain logic
-* Contain global variables with storage
+Define functions (only declares them)
+Contain logic
+Contain global variables with storage
 
-Example contents:
-
-* void run_network(void);
-* char key_get(void);
-* void lcd_init(void);
-
-Every file that wants to use LCD or keypad includes run.h.
-
----
-
-### train.c
-
-train.c contains the neural network training logic.
-
-Its responsibilities:
-
-* Training data
-* Weight updates
-* Activation functions
-* Cost/error computation
-* Any math related to learning
-
-train.c does NOT:
-
-* Touch ports
-* Talk to the LCD directly
-* Read keypad pins
-* Contain LCD or keypad implementations
-
-If train.c needs to display something:
-
-* It calls lcd functions declared in run.h
-* It never defines them
-
----
-
-### train.h
-
-train.h is the public interface of train.c.
-
-It contains:
-
-* Declarations for training-related functions
-* Constants related to training
-
-Example:
-
-* void train_step(void);
-* void train_init(void);
-
-main.c or run.c can include train.h to trigger training steps.
-
----
-
-### demo_train.c (important)
-
-demo_train.c was an old or experimental file.
-
-Problem:
-
-* It contained copies of LCD functions
-* It was being linked together with run.c
-
-This caused linker errors because:
-
-* The same function names were defined in multiple .c files
-
-Resolution:
-
-* demo_train.c must either be removed from the build
-* Or stripped down to pure training logic
-* It must not define LCD or keypad functions
-
----
-
-## Why the linker errors happened
-
-### Function redefined errors
-
-XC8 links all .c files together into one program.
-
-If two files both contain:
-void lcd_cmd(...)
-
-The linker sees:
-
-* Two global symbols with the same name
-* It does not know which one to use
-* Build fails
-
-This is why LCD code must exist in exactly one .c file.
-
----
-
-### Conflicting declaration errors
-
-This happened because:
-
-* run.c defined run_network()
-* run.h declared run_loop()
-* main.c called run_network()
-
-The compiler requires:
-
-* The function name
-* Return type
-* Parameters
-
-to match exactly everywhere.
-
-Even one mismatch causes a hard error.
-
----
-
-## Design rule we are enforcing
-
-One module, one owner.
-
-* One peripheral → one .c file
-* One implementation → one definition
-* Other files only see it through a .h file
-
-.c files define behavior
-.h files declare behavior
-
-Never the other way around.
-
----
-
-## Build flow
-
-1. XC8 compiles each .c file separately
-2. Each produces an object file
-3. The linker combines them
-4. Any duplicate symbols cause failure
-
-If it links, the structure is correct.
-
----
-
-## Current clean architecture
+Every file that needs LCD functions includes lcd.h:
 
 main.c
+train.c
+run.c
+demo.c
 
-* includes run.h and train.h
-* calls run_network()
 
 run.c
+run.c is the inference/prediction runtime layer.
+This file owns:
 
-* implements LCD, keypad, runtime loop
+Keypad input functions (scanning, debouncing)
+Decimal number input from keypad (Q8.8 format)
+Trained network parameters (weights and biases)
+Neural network forward pass (inference only)
+Main inference loop
+
+Examples of what belongs here:
+
+read_keypad()
+read_decimal_from_keypad()
+calculate_sigmoid()
+neural_network_predict()
+run_network() - main inference loop
+
+run.c does NOT:
+
+Implement LCD functions (uses lcd.h)
+Contain training logic (no backpropagation)
+Touch training data
+
+Usage:
+Users enter x values via keypad, and the network predicts y values using pre-trained weights.
 
 run.h
+run.h is the public interface of run.c.
+It contains:
 
-* declares LCD, keypad, runtime functions
+Function declarations for keypad input
+Function declaration for run_network()
+Function declaration for neural_network_predict()
 
-train.c
 
-* implements neural network logic
-
-train.h
-
-* declares training functions
-
-No duplicated hardware code anywhere.
