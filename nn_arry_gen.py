@@ -10,7 +10,7 @@ c = 7.0
 
 x_min = -10.0
 x_max =  10.0
-num_samples = 21   
+num_samples = 35   
 
 # sample real vals
 

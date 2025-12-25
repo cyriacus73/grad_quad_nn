@@ -1,39 +1,54 @@
+// ============================================================================
+// run.c — Fixed-point (Q8.8) neural network inference on PIC
+// ============================================================================
+
 #include <xc.h>
 #include <stdint.h>
 #include "lcd.h"
-#include "train.h"
+#include "train.h"   // provides sigmoid_lut_256[]
+#include "nn.h"      // optional: network size defs, if you have them
 
 #define _XTAL_FREQ 20000000
 
-// ================= FIXED-POINT CONFIG =================
-// Q8.8 format
-#define F(x) ((int16_t)((x) * 256.0f))
-#define QMUL(a,b) ((int16_t)(((int32_t)(a) * (b)) >> 8))
+// ============================================================================
+// FIXED-POINT CONFIG (Q8.8)
+// ============================================================================
 
-// ================= NORMALIZATION CONSTANTS =================
-// Matches Python exactly
-// x_norm already in [-256, +256]
-// y_norm in [0, 256]
-#define Y_MIN     5
-#define Y_RANGE   352   // 357 - 5
+// Convert a float constant to Q8.8 at compile time
+#define F(x) ((int16_t)((x) * 256.0f))
+
+// Multiply two Q8.8 numbers -> Q8.8
+// (a * b) is Q16.16, shift right by 8 to return to Q8.8
+
+#define QMUL(a,b) ((int16_t)(((int32_t)(a) * (int32_t)(b)) >> 8))
+
+
+// ============================================================================
+// NORMALIZATION CONSTANTS (MATCH PYTHON, STORED AS Q8.8)
+// y_real = y_norm * Y_RANGE + Y_MIN
+// ============================================================================
+
+#define Y_MIN_Q88    F(5.097f)
+#define Y_RANGE_Q88  F(351.903f)
 
 // ============================================================================
 // SIGMOID (Q8.8)
-// z ? [-2048, +2048] ? LUT[0..255]
+// Input z is Q8.8, expected roughly in [-2048, +2048] (~[-8,+8])
+// LUT has 256 entries covering that range
 // ============================================================================
 
 static inline int16_t calculate_sigmoid(int16_t z)
 {
-    if (z <= -2048) return 0;
-    if (z >=  2048) return 256;
-
-    uint8_t index = (uint8_t)((z + 2048) >> 4);
+    // use same limits/shift as train.c (z in Q8.8, expected roughly -1024..+1024)
+    if (z <= -1024) return 0;
+    if (z >=  1024) return 256;
+    uint8_t index = (uint8_t)((z + 1024) >> 3); // >>3 -> divide by 8
     return sigmoid_lut_256[index];
 }
 
 // ============================================================================
 // KEYPAD INPUT
-// Returns Q8.8 REAL VALUE (no normalization here)
+// Reads a decimal number and returns it as Q8.8 (NO normalization here)
 // ============================================================================
 
 char read_keypad(void)
@@ -60,6 +75,7 @@ char read_keypad(void)
     return 0;
 }
 
+// Reads a decimal like "3.25" and returns Q8.8
 int16_t read_decimal_from_keypad(void)
 {
     int32_t int_part = 0;
@@ -100,7 +116,7 @@ int16_t read_decimal_from_keypad(void)
         }
     }
 
-    int32_t value = (int_part << 8);
+    int32_t value = (int_part << 8);          // integer part -> Q8.8
     if (frac_scale > 1) {
         value += (frac_part << 8) / frac_scale;
     }
@@ -109,41 +125,48 @@ int16_t read_decimal_from_keypad(void)
 }
 
 // ============================================================================
-// NETWORK PARAMETERS (Q8.8, TRAINED)
+// NETWORK PARAMETERS (TRAINED, Q8.8)
+// Architecture: 1 ? 6 ? 1, hidden sigmoid, output linear
 // ============================================================================
 
 #define NUM_HIDDEN 6
 
 int16_t w_in_h[NUM_HIDDEN] = {
-    F(-1.25), F(0.18),F(-1.25), F(0.18), F(-1.25), F(0.18)
+    F(3.03), F(8.00), F(3.22), F(4.87), F(3.22), F(8.00)
 };
 
 int16_t b_h[NUM_HIDDEN] = {
-    F(0.18), F(0.01), F(0.18), F(0.01), F(0.18), F(0.01)
+    F(7.03), F(10.12), F(7.22), F(8.87), F(7.22), F(10.12)
 };
 
 int16_t w_h_out[NUM_HIDDEN] = {
-    F(-1.11), F(0.13), F(-1.11), F(0.13), F(-1.11), F(0.13)
+    F(0.27), F(-1.57), F(0.19), F(0.11), F(0.18), F(-1.46)
 };
 
-int16_t b_out = F(0.01);
+int16_t b_out = F(0.75);
 
 // ============================================================================
 // FORWARD PASS
-// Output layer is LINEAR
+// x_norm : Q8.8 input (already normalized like training)
+// returns y_norm : Q8.8 in [0,256]
 // ============================================================================
 
 int16_t neural_network_predict(int16_t x_norm)
 {
-    int32_t acc = b_out;   // Q8.8
+    int32_t acc = b_out;   // accumulator in Q8.8
 
     for (uint8_t i = 0; i < NUM_HIDDEN; i++) {
+        // z = w*x + b   (Q8.8)
         int16_t z = QMUL(w_in_h[i], x_norm) + b_h[i];
+
+        // h = sigmoid(z)
         int16_t h = calculate_sigmoid(z);
+
+        // acc += w*h
         acc += ((int32_t)w_h_out[i] * h) >> 8;
     }
 
-    // Clamp to training domain
+    // Clamp output to training range [0, 1] in Q8.8
     if (acc < 0)   acc = 0;
     if (acc > 256) acc = 256;
 
@@ -164,20 +187,25 @@ void run_network(void)
         lcd_clear_screen();
         lcd_print_string("Input X:");
 
-        // Q8.8 REAL INPUT (already normalized like Python)
-        int16_t x_norm = read_decimal_from_keypad();
+        // Read normalized input (Q8.8)
+        // for x in [-10,10]):
+	 int16_t x_input_q88 = read_decimal_from_keypad();       // e.g. user types 3.25 -> Q8.8
+	 int16_t x_norm = QMUL(x_input_q88, F(0.1f));            // map [-10..10] -> [-1..1] (Q8.8)
 
-        // Predict normalized y
+        // Forward pass
         int16_t y_norm = neural_network_predict(x_norm);
 
-        // De-normalize (matches Python)
-        int32_t y_real = ((int32_t)y_norm * Y_RANGE) >> 8;
-        y_real += Y_MIN;
+        // De-normalize:
+        // y_real_q88 = y_norm * Y_RANGE + Y_MIN
+        int32_t y_real_q88 = QMUL(y_norm, Y_RANGE_Q88) + Y_MIN_Q88;
+
+        // Convert Q8.8 -> integer for display
+        uint16_t y_real = (uint16_t)(y_real_q88 >> 8);
 
         lcd_clear_screen();
         lcd_print_string("Result Y:");
         lcd_goto_position(2,1);
-        lcd_print_unsigned_int((uint16_t)y_real);
+        lcd_print_unsigned_int(y_real);
 
         while (!read_keypad());
     }
