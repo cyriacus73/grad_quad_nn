@@ -143,7 +143,7 @@ Several safeguards are used:
 
 ---
 
-### 6. User Interaction
+### 7. User Interaction
 
 The system uses:
 
