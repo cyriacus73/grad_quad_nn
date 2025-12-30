@@ -2,7 +2,7 @@
 
 ## What This Project Does
 
-This project runs a small neural network **entirely on a PIC microcontroller** - no floating-point math, just fixed-point arithmetic. We're teaching it to approximate a quadratic equation (we tested with):
+This project runs a small neural network **entirely on a PIC microcontroller** - no floating-point math, just fixed-point arithmetic. I taught it to approximate a quadratic equation (I tested with):
 
 ```
 y = 3x² - 5x + 7
@@ -20,19 +20,25 @@ The system can:
 * Show results on an LCD screen
 * Export the trained weights for later use
 
+## About the Simulation and Hardware
+
+In Proteus, I had to change the ports to match the hardware devices we had, so I've got slightly different code (just ports, reading keypad, and writing to LCD changes).
+
+The "hardware simul" folder is just to match the hardware - it's the version adapted for our specific setup.
+
 ---
 
 ## Key Design Decisions
 
 ### 1. Fixed-Point Arithmetic (Q8.8)
 
-We represent all numbers as signed 16-bit integers:
+I represent all numbers as signed 16-bit integers:
 
 * Top 8 bits: whole number part
 * Bottom 8 bits: decimal part
 * Multiply by 256 to get the real value
 
-This gives us predictable math, no weird rounding errors, and fast execution on an 8-bit chip.
+This gives me predictable math, no weird rounding errors, and fast execution on an 8-bit chip.
 
 No floating-point anywhere in the code.
 
@@ -49,7 +55,7 @@ Why bother?
 
 * Keeps neuron outputs in a stable range
 * Stops the sigmoid from getting stuck at 0 or 1
-* Lets us use smaller weights that train better
+* Lets me use smaller weights that train better
 
 Note: The sigmoid's input range (-8 to +8) is separate from this scaling. Different concerns.
 
@@ -57,13 +63,13 @@ Note: The sigmoid's input range (-8 to +8) is separate from this scaling. Differ
 
 ### 3. Network Architecture
 
-What we built:
+What I built:
 
 * 1 input node
 * 6 hidden nodes with sigmoid activation
 * 1 output node (linear, no activation)
 
-Kept it small on purpose:
+I kept it small on purpose:
 
 * Fits in the PIC's RAM
 * Trains fast enough
@@ -77,7 +83,7 @@ The network figures out the pattern, not the exact math formula.
 
 Exp() functions are too slow for a PIC.
 
-Instead:
+Instead, I use:
 
 * 256-entry table that approximates `sigmoid(z)`
 * Maps `z` from `[-8, +8]` to table indices `[0, 255]`
@@ -117,7 +123,7 @@ This isn't textbook machine learning - it's embedded ML, adapted for hardware li
 How you interact:
 
 * Keypad for number input
-* `*` acts as decimal point
+* `*` acts as decimal point and (-) sign
 * `#` submits the number
 * LCD shows everything
 
@@ -125,37 +131,6 @@ Numbers go straight to fixed-point format.
 Example:
 
 * Type `3*4` → means `3.4` → stored as `3.4 × 256`
-
----
-
-* Forward pass
-* Backpropagation
-* Manually scaled gradients
-* Carefully tuned learning rates
-
-Several safeguards are used:
-
-* Error scaling (right shifts)
-* Gradient attenuation
-* Weight clamping
-* Symmetry-breaking initialization
-
-
----
-
-### 7. User Interaction
-
-The system uses:
-
-* A keypad for numeric input
-* `*` as a decimal point and (-) sign
-* `#` to submit input
-* An LCD for all output
-
-Numbers are entered directly into fixed-point format.
-For example:
-
-* `3*4` → `3.4` → stored as `3.4 × 256`
 
 ---
 
@@ -192,7 +167,7 @@ Handles:
 * Training loop with progress
 * Exporting final weights
 
-This is where we fought numerical issues:
+This is where I fought numerical issues:
 
 * Learning rate adjustments
 * Gradient scaling
@@ -274,9 +249,9 @@ Provides:
 Great for debugging.
 
 
-## What We Learned
+## What I Learned
 
-We ran into lots of numerical headaches:
+I ran into lots of numerical headaches:
 
 * Scaling factors being off
 * Wrong order of updates
