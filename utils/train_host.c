@@ -178,8 +178,28 @@ int main(void) {
     printf("Training quadratic y = 3x² - 5x + 7 on x ∈ [-2, 2]...\n");
     for (int e = 0; e < EPOCHS; e++) {
         train_epoch();  // one epoch of batch gradient descent
-        if (e % 1000 == 0) printf("Epoch %d\n", e);
+       
     }
+
+    // print predicted curve as Python arrays
+    printf("\nQuadratic curve y = 3x^2 - 5x + 7 as Python arrays:\n");
+    printf("x_vals = [");
+    for (int s = 0; s < SAMPLES; s++) {
+        double x = (train_x[s] / 256.0) * 2.0;
+        printf("%.1f", x);
+        if (s < SAMPLES-1) printf(", ");
+    }
+    printf("]\n");
+
+    int16_t h_pred[NUM_HIDDEN];
+    printf("y_vals = [");
+    for (int s = 0; s < SAMPLES; s++) {
+        int16_t pred_norm = forward(train_x[s], h_pred);
+        double pred_y = (pred_norm / 256.0) * Y_RANGE_REAL + Y_MIN_REAL;
+        printf("%.1f", pred_y);
+        if (s < SAMPLES-1) printf(", ");
+    }
+    printf("]\n");
 
     // test the trained network on all training samples
     double total_err = 0.0;
@@ -206,11 +226,10 @@ int main(void) {
         printf("%6.1f | %6.1f | %6.1f | %5.1f\n", x_real, pred_y, true_y, error);
     }
 
-    // report average error (good performance: < 1.0 for this problem)
-    printf("Average error: %.1f — this is very good for 6 sigmoid neurons!\n", total_err / SAMPLES);
+    printf("Average error: %.1f \n", total_err / SAMPLES);
 
     // export trained weights for copying to PIC run.c
-    printf("\n// Copy these weights to your PIC run.c\n");
+    printf("\n// weigths to test on PIC run.c\n");
     printf("int16_t w1[NUM_HIDDEN] = {%d,%d,%d,%d,%d,%d};\n", w1[0],w1[1],w1[2],w1[3],w1[4],w1[5]);
     printf("int16_t b1[NUM_HIDDEN] = {%d,%d,%d,%d,%d,%d};\n", b1[0],b1[1],b1[2],b1[3],b1[4],b1[5]);
     printf("int16_t w2[NUM_HIDDEN] = {%d,%d,%d,%d,%d,%d};\n", w2[0],w2[1],w2[2],w2[3],w2[4],w2[5]);
